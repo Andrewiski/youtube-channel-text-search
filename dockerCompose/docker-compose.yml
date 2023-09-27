@@ -1,0 +1,38 @@
+version: "3.7"
+services:
+  shippingstar_node:
+    image: "andrewiski/youtubesearch:latest"
+    ports:
+      - "38080:37080"
+    environment:
+      MONGODBSERVERURL: "${MONGODBSERVERURL:-mongodb://youtubesearch:y0utube3earch@youtubesearch_mongodb_dev:27017/}" 
+      GOOGLEAPIKEY: "${GOOGLEAPIKEY:-}"
+    volumes:
+      - ../data/config:/usr/src/youtubesearch/config
+      - ../data/logs:/usr/src/youtubesearch/logs
+    container_name: youtubesearch_node
+    depends_on:
+      - youtubesearch_mongodb
+    networks:
+    - express-mongo
+    restart: always
+  shippingstar_mongodb:
+    image: mongo:4.4.23
+    container_name: youtubesearch_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGOUSERNAME:-youtubesearch}" 
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGOPASSWORD:-y0utube3earch}" 
+      MONGO_INITDB_DATABASE: "${MONGODATABASE:-youtubesearch}" 
+    volumes:
+      - ../data/mongodb/data/db:/data/db
+      - ../data/mongodb/data/configdb:/data/configdb
+      #- ../data/mongodb/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
+      - ../data/mongodb/docker-entrypoint-initdb.d/createDatabase.js:/docker-entrypoint-initdb.d/createDatabase.js:ro
+    # comment out the port below for Production as only need to Expose to internal services inside of Docker here so we can connect directly to the MongoDB container
+    ports:
+      - "38017:27017"  
+    restart: always
+    networks:
+    - express-mongo
+networks:
+  express-mongo:

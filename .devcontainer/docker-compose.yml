@@ -1,0 +1,61 @@
+version: '3.7'
+
+services:
+  youtubesearch_node_dev:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # [Choice] Node.js version: 16, 14, 12
+        VARIANT: 16
+        # On Linux, you may need to update USER_UID and USER_GID below if not your local UID is not 1000.
+        USER_UID: 1000
+        USER_GID: 1000
+
+    volumes:
+      - ..:/workspace:cached
+    container_name: youtubesearch_node_dev
+    environment:
+      localDebug: "true"
+      DEBUG: "youtubesearch"
+    # Overrides default command so things don't shut down after the process ends.
+    command: sleep infinity
+
+    # Runs app on the same network as the database container, allows "forwardPorts" in devcontainer.json function.
+    #network_mode: service:db
+
+    # Uncomment the next line to use a non-root user for all processes.
+    # user: node
+
+    # Use "forwardPorts" in **devcontainer.json** to forward an app port locally. 
+    # (Adding the "ports" property to this file will not forward from a Codespace.)
+    depends_on:
+      - youtubesearch_mongodb_dev
+   
+    ports:
+      - "37080:37080"
+    networks:
+      - express-mongo
+  
+  youtubesearch_mongodb_dev:
+    image: mongo:4.4.23
+    container_name: youtubesearch_mongodb_dev
+    restart: unless-stopped
+    volumes:
+      - mongodb-data:/data
+      - ../mongodb/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "youtubesearch"
+      MONGO_INITDB_ROOT_PASSWORD: "y0utube3earch"
+      MONGO_INITDB_DATABASE: "youtubesearch"
+    # Add "forwardPorts": ["27017"] to **devcontainer.json** to forward MongoDB locally.
+    # (Adding the "ports" property to this file will not forward from a Codespace.)
+    ports:
+      - "37017:27017"
+    networks:
+      - express-mongo
+volumes:
+  mongodb-data:
+  
+networks:
+  express-mongo:

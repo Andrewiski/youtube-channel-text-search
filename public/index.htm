@@ -1,0 +1,148 @@
+﻿<!DOCTYPE html>
+
+<html class="h-100">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width">
+    <title>Youtube Search</title>
+
+    <!--<link href="stylesheets/bootstrap.min.css" rel="stylesheet" />
+    <link href="stylesheets/bootstrap-theme.min.css" rel="stylesheet" />-->
+    <link href="/javascript/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
+    <!--<link href="/javascript/bootstrap/css/bootstrap-theme.min.css" rel="stylesheet" />-->
+    <link href="/javascript/fontawesome/css/all.min.css" rel="stylesheet" />
+        <link href="/stylesheets/style.css" rel="stylesheet" />
+    <!--Served up by the socket.io service directly as part of the IO service process-->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/javascript/bootstrap/js/bootstrap.min.js"></script>
+    <script src="/javascript/fontawesome/js/all.min.js"></script>
+    <script src="/javascript/dayjs/dayjs.min.js"></script>
+    <script src="/javascript/js-cookie/js.cookie.min.js"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
+   
+    
+    <script>
+        var ajax = function(url) {
+
+            return new Promise(function(resolve, reject) {
+                var xhr = new XMLHttpRequest();
+                xhr.onload = function() {
+                    if (this.status >= 200 && this.status < 300) {
+                        try {
+                            resolve(JSON.parse(this.responseText));
+                        } catch (e) {
+                            reject(e);
+                        }
+                    } else {
+                        reject({
+                            status: this.status,
+                            statusText: xhr.statusText
+                        });
+                    }
+                    
+                };
+                xhr.onerror = reject;
+                xhr.open('GET', url);
+                xhr.send();
+            });
+            
+            return xhr;
+        }
+
+        var commonData = {
+            socket: null
+        };
+
+        document.addEventListener('DOMContentLoaded', function () {
+
+            commonData.socket = io();
+            document.querySelector(".btnLoadTranscripts").addEventListener("click", (evt) => {
+                var channelId = document.querySelector(".youtube-channelid").value;
+                commonData.socket.emit("loadChannel", {channelId: channelId});    
+            });
+
+            document.querySelector(".btnTest").addEventListener("click", (evt) => {
+                var videoId = document.querySelector(".youtube-videoid").value;
+                commonData.socket.emit("test", {videoId: videoId});    
+            });
+
+        }, false);
+    </script>
+</head>
+<body class="d-flex flex-column h-100">
+    <header>     
+        <div class="navbar navbar-expand-lg navbar-light bg-light" >
+            <div class="container">
+                <div>
+                    <div class="float-start">
+                        <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbarTopMenu" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                            <span class="navbar-toggler-icon"></span>
+                        </button>
+                        <a class="navbar-brand youtubesearchlogo" href="/"><i class="fa-brands fa-youtube"></i> YouTube Transcript Search</a>
+                    </div>
+                    <div class="float-end">
+                        <div class="collapse navbar-collapse" id="navbarTopMenu">
+                            <ul class="navbar-nav navbar-right me-auto mb-2 mb-lg-0 menuItems">  
+                                <li class="nav-item menuItem">
+                                    <a class="nav-link" href="#">Search</a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </header>    
+
+    <main class="flex-grow-0" >
+        <div class="container mainContent">
+            <div class="row">
+                <div class="pageContent">
+
+                    <div class="card">
+                        <div class="card-header">Fetch Latest Videos</div>
+                        <div class="card-body">
+                            <div class="loadPanel">
+                            <div class="input-group">
+                                <span class="input-group-text"></i>Youtube Channel Id</span>
+                                <input class="form-control youtube-channelid" type="text" aria-label="YouTube ChannelId" aria-describedby="inputGroup-sizing-sm" placeholder="YouTube ChannelId" value="UCXMBuPm5AakJO-g6n_Ra4wA" />
+                            </div>
+                            <div class="input-group">
+                                <button class="btn btn-secondary btn-sm btnLoadTranscripts" title="Load New Transcripts">Load</button>
+                            </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">Test</div>
+                        <div class="card-body">
+                            <div class="loadPanel">
+                            <div class="input-group">
+                                <span class="input-group-text"></i>VideoId</span>
+                                <input class="form-control youtube-videoid" type="text" aria-label="YouTube VideoId" aria-describedby="inputGroup-sizing-sm" placeholder="YouTube VideoId" value="MnZc7YaW4CI" />
+                            </div>
+                            <div class="input-group">
+                                <button class="btn btn-secondary btn-sm btnTest" title="Test">Test</button>
+                            </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>    
+            </div>
+        </div>
+    </main>
+    
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container">
+            <p class="text-center">
+                <span class="text-muted">YouTube Transcript Search</span>
+            </p>
+        </div>
+    </footer>
+    
+
+
+</body>
+</html>
