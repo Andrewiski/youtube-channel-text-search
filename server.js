@@ -33,7 +33,7 @@ if (process.env.localDebug === 'true') {
 
 var defaultConfig = {
     "configDirectory": configFileOptions.configDirectory,
-    "mongoDbServerUrl": "mongodb://youtubesearch:y0utube3earch@youtubesearch_mongodb_dev:37017/",
+    "mongoDbServerUrl": "mongodb://youtubesearch:y0utube3earch@youtubesearch_mongodb:27017/",
     "mongoDbDatabaseName": "youtubesearch",
     "logDirectory": "logs",
     "logLevel": "info",

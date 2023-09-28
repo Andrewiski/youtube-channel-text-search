@@ -5,7 +5,7 @@ services:
     ports:
       - "38080:37080"
     environment:
-      MONGODBSERVERURL: "${MONGODBSERVERURL:-mongodb://youtubesearch:y0utube3earch@youtubesearch_mongodb_dev:27017/}" 
+      MONGODBSERVERURL: "${MONGODBSERVERURL:-mongodb://youtubesearch:y0utube3earch@youtubesearch_mongodb:27017/}" 
       GOOGLEAPIKEY: "${GOOGLEAPIKEY:-}"
     volumes:
       - ../data/config:/usr/src/youtubesearch/config

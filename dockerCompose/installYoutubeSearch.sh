@@ -1,7 +1,7 @@
 #!/bin/bash
 # installYoutubeSearch.sh
 
-VERSION=0.0.3.2023-08-16:0038
+VERSION=0.0.2.2023-09-27:0001
 echo installYoutubeSearch version $VERSION
 
 YOUTUBESEARCH_USER=""
@@ -120,7 +120,7 @@ PREREQUISITES=(
   "envsubst|gettext-base"
 )
 
-HTTP_PORT="49080"
+HTTP_PORT="38080"
 COMPOSE_PROJECT_NAME="andrewiski/youtubesearch:latest"
 COMPOSE_CONTAINER_NAME="youtubesearch_node"
 USERNAME="${YOUTUBESEARCH_USER:-$USER}"
