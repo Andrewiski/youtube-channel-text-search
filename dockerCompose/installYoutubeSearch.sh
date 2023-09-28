@@ -1,13 +1,12 @@
 #!/bin/bash
-# installShippingStar.sh
+# installYoutubeSearch.sh
 
 VERSION=0.0.3.2023-08-16:0038
 echo installYoutubeSearch version $VERSION
 
 YOUTUBESEARCH_USER=""
 YOUTUBESEARCH_HOME_DIR=""
-GITHUB_TOKEN=""
-DOCKER_TOKEN=""
+
 GOOGLEAPIKEY=""
 NOCREATEUSER=""
 MONGODBSERVERURL=""       
@@ -34,23 +33,6 @@ while :; do
             cliexit 'ERROR: "--username" requires a non-empty option argument.'
           fi
           ;;
-        -githubtoken) # github token.
-          if [ "$2" ]; then
-            GITHUB_TOKEN=$2
-            shift
-          else
-            cliexit 'ERROR: "--githubtoken" requires a non-empty option argument.'
-          fi
-          ;; 
-          
-        -dockertoken) # docker token. 
-          if [ "$2" ]; then
-            DOCKER_TOKEN=$2
-            shift
-          else
-            cliexit 'ERROR: "--dockertoken" requires a non-empty option argument.'
-          fi
-          ;; 
         -googleapikey) # google api key. 
           if [ "$2" ]; then
               GOOGLEAPIKEY=$2
@@ -139,8 +121,8 @@ PREREQUISITES=(
 )
 
 HTTP_PORT="49080"
-COMPOSE_PROJECT_NAME="andrewiski/shippingstar:latest"
-COMPOSE_CONTAINER_NAME="shippingstar_node"
+COMPOSE_PROJECT_NAME="andrewiski/youtubesearch:latest"
+COMPOSE_CONTAINER_NAME="youtubesearch_node"
 USERNAME="${YOUTUBESEARCH_USER:-$USER}"
 
 if [ -x "$(command -v getent)" ]; then
@@ -162,43 +144,25 @@ fi
 
 
 
-if [ -z "$GITHUB_TOKEN" ]
-then
-  read -p "Github Token: " GITHUB_TOKEN
-  echo ""
-fi
-#echo "GitHub Token is $GITHUB_TOKEN"
-echo "Processing..."
 
-if [ -z "$DOCKER_TOKEN" ]
-then
-read -p "Docker Token: " DOCKER_TOKEN
-echo ""
-fi
-#echo "Docker Token is $DOCKER_TOKEN"
 echo "Processing..."
 
 echo "UserName is $USERNAME"
 echo "Home Directoy is $HOME_DIR"
-echo "GITHUB_TOKEN is $GITHUB_TOKEN"
-echo "DOCKER_TOKEN is $DOCKER_TOKEN"
 echo "GOOGLEAPIKEY is $GOOGLEAPIKEY"
 echo "NOCREATEUSER is $NOCREATEUSER"
 
 
-# DOCKER variables
-DOCKER_USER="andrewiski"
-echo $DOCKER_TOKEN | docker login -u $DOCKER_USER --password-stdin
+
 
 # YOUTUBESEARCH variables
-export GITHUB_AUTH="Authorization: token $GITHUB_TOKEN"
+
 export YOUTUBESEARCH_REPO="https://raw.githubusercontent.com/Andrewiski/youtube-channel-text-search/main"
 export YOUTUBESEARCH_APP_DIR="${HOME_DIR}/youtubesearch/app"
 export YOUTUBESEARCH_DATA_DIR="${HOME_DIR}/youtubesearch/data"
 export YOUTUBESEARCH_DOCKER_COMPOSE_PATH="${YOUTUBESEARCH_APP_DIR}/docker-compose.yml"
 
-#echo "Delete Me Auth= ${GITHUB_AUTH}" 
-#export NODE_ENV="production"
+
 
 
 if [ "${SCRIPT_DIR}" = "${YOUTUBESEARCH_APP_DIR}" ]; then
@@ -230,13 +194,11 @@ fail() {
   exit 1
 }
 
-pull_install_files(){
-  #echo "Delete Me Auth= ${GITHUB_AUTH}" 
+pull_install_files(){ 
   echo "downloading ${YOUTUBESEARCH_REPO}/dockerCompose/docker-compose.yml"
-  echo "delete me curl -H \"${GITHUB_AUTH}\" -L \"${YOUTUBESEARCH_REPO}/dockerCompose/docker-compose.yml\" -o \"${YOUTUBESEARCH_APP_DIR}/docker-compose.yml\""
-	curl -H "${GITHUB_AUTH}" -LS "${YOUTUBESEARCH_REPO}/dockerCompose/docker-compose.yml" -o "${YOUTUBESEARCH_APP_DIR}/docker-compose.yml"
+  curl -LS "${YOUTUBESEARCH_REPO}/dockerCompose/docker-compose.yml" -o "${YOUTUBESEARCH_APP_DIR}/docker-compose.yml"
   echo "downloading ${YOUTUBESEARCH_REPO}/mongodb/docker-entrypoint-initdb.d/createDatabase.js"
-	curl -H "${GITHUB_AUTH}" -LS "${YOUTUBESEARCH_REPO}/mongodb/docker-entrypoint-initdb.d/createDatabase.js" -o "${YOUTUBESEARCH_DATA_DIR}/mongodb/docker-entrypoint-initdb.d/createDatabase.js"
+	curl -LS "${YOUTUBESEARCH_REPO}/mongodb/docker-entrypoint-initdb.d/createDatabase.js" -o "${YOUTUBESEARCH_DATA_DIR}/mongodb/docker-entrypoint-initdb.d/createDatabase.js"
  }
 
 create_app_folder() {
@@ -364,8 +326,8 @@ change_owner() {
 
 start_docker_containers() {
   echo "GOOGLEAPIKEY=$GOOGLEAPIKEY" > ${YOUTUBESEARCH_APP_DIR}/youtubesearch.env
-  echo "Starting ShippingStar docker containers."
-  docker-compose -p shippingstar --env-file "${YOUTUBESEARCH_APP_DIR}/shippingstar.env" -f "${YOUTUBESEARCH_DOCKER_COMPOSE_PATH}" up -d shippingstar_node || fail "Failed to start docker containers"
+  echo "Starting YoutubeSearch docker containers."
+  docker-compose -p youtubesearch --env-file "${YOUTUBESEARCH_APP_DIR}/youtubesearch.env" -f "${YOUTUBESEARCH_DOCKER_COMPOSE_PATH}" up -d youtubesearch_node || fail "Failed to start docker containers"
 }
 
 
