@@ -1,6 +1,6 @@
 version: "3.7"
 services:
-  shippingstar_node:
+  youtubesearch_node:
     image: "andrewiski/youtubesearch:latest"
     ports:
       - "38080:37080"
@@ -16,7 +16,7 @@ services:
     networks:
     - express-mongo
     restart: always
-  shippingstar_mongodb:
+  youtubesearch_mongodb:
     image: mongo:4.4.23
     container_name: youtubesearch_mongodb
     environment:
