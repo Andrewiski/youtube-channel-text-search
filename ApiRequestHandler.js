@@ -47,10 +47,23 @@ var ApiRequestHandler = function (options) {
     var BindRoutes = function (routes) {
         try {
             //routes.get('/api/Settings/AnonymousClientSideSettings', getAnonymousClientSideSettings);
-            routes.get('/api/searchTranscript', searchTranscripts);
+            routes.get('/api/searchTranscripts', searchTranscriptsHandler);
         } catch (ex) {
            debug("error", ex.msg, ex.stack);
         }  
+    }
+
+    var searchTranscriptsHandler = function(req, res, next){
+        let search = req.query.search;
+        let options = {
+            search: search
+        }
+        searchTranscripts(options).then((results) => {
+            res.json(results);
+        }).catch((ex) => {
+            debug('error', 'searchTranscriptsHandler',  {msg:ex.message, stack:ex.stack});
+            res.status(500).json({ "msg": "An Error Occured!", "error": ex });
+        });
     }
 
     var getAnonymousClientSideSettings = function(req, res, next){
@@ -70,7 +83,7 @@ var ApiRequestHandler = function (options) {
         }
     }
 
-    var insertVideoTranscript = function (options){
+    var insertVideoTranscripts = function (options){
         return new Promise((resolve, reject) => {        
             const client = new MongoClient(self.options.mongoDbServerUrl,self.options.mongoClientOptions);
             // Use connect method to connect to the Server
@@ -80,38 +93,37 @@ var ApiRequestHandler = function (options) {
                         const db = client.db(self.options.mongoDbDatabaseName);
                         const collection = db.collection('youtubeTranscripts');
                         if (collection) {
-                            var transcript = options.transcript;
-                            transcript.createdOn = new Date();
-                            collection.insertOne(transcript).then(                            
-                                function ( doc) {
+                            const insertOptions = { ordered: true };
+                            collection.insertMany(options.transcripts, insertOptions).then(                            
+                                function (results) {
                                     client.close();
-                                    resolve(accessToken);
+                                    resolve(results);
                                 },
                                 function(err){
-                                    debug("error", "insertVideoTranscript", { "msg": err.message, "stack": err.stack });
+                                    debug("error", "insertVideoTranscripts", { "msg": err.message, "stack": err.stack });
                                     reject({ "msg": "An Error Occured!", "error": err });
                                     client.close();            
                                 }
                             );
                         } else {
-                            debug("error", "insertVideoTranscript", { "msg": "Not Able to Open MongoDB Connection", "stack": "" });
+                            debug("error", "insertVideoTranscripts", { "msg": "Not Able to Open MongoDB Connection", "stack": "" });
                             client.close();
                             reject({ "code": 500, "msg": "Not Able to Open MongoDB Connection", "error": "collection is null"});
                         }
                     } catch (ex) {
-                        debug("error", "insertVideoTranscript", { "msg": ex.message, "stack": ex.stack });
+                        debug("error", "insertVideoTranscripts", { "msg": ex.message, "stack": ex.stack });
                         client.close();
                         reject({ "code": 500, "msg": ex.message, "error": ex });
                     }
                 },
                 function(err){
-                    debug("error", "insertVideoTranscript", { "msg": err.message, "stack": err.stack });
+                    debug("error", "insertVideoTranscripts", { "msg": err.message, "stack": err.stack });
                     reject({ "msg": "An Error Occured!", "error": err });           
                 }
             )
             })
             .catch ((ex) => {
-                debug('error', 'insertVideoTranscript',  { "msg": ex.message, "stack": ex.stack });
+                debug('error', 'insertVideoTranscripts',  { "msg": ex.message, "stack": ex.stack });
             });
     }
 
@@ -209,7 +221,7 @@ var ApiRequestHandler = function (options) {
                                     retval.msg = "An Error Occured!";
                                 }
                             } catch (ex) {
-                                debug('error', 'remoteDownloader',  {msg:ex.message, stack:ex.stack});
+                                debug('error', 'remoteDownloader',  {message:ex.message, stack:ex.stack});
                                 retval = { "code": 500, "msg": "An Error Occured!", "error": e };
                             }
                             reject(retval);
@@ -248,7 +260,7 @@ var ApiRequestHandler = function (options) {
             request.end(body);
         })
         .catch ((ex) => {
-            debug('error', 'remoteDownloader',  {msg:ex.message, stack:ex.stack});
+            debug('error', 'remoteDownloader',  {message:ex.message, stack:ex.stack});
         });
         
     };
@@ -288,23 +300,92 @@ var ApiRequestHandler = function (options) {
                     resolve(channelVideos);
                 }
             }).catch((ex) => {
-                debug('error', 'youtubeSearchVideos',  {msg:ex.message, stack:ex.stack});
+                debug('error', 'youtubeSearchVideos',  {message:ex.message, stack:ex.stack});
             });
         })
         .catch ((ex) => {
-            debug('error', 'youtubeSearchVideos',  {msg:ex.message, stack:ex.stack});
+            debug('error', 'youtubeSearchVideos',  {message:ex.message, stack:ex.stack});
         });
     }
 
-    var test = function (options) {
-        YoutubeTranscript.fetchTranscript(options.videoId)
-            .then((transcripts) => {
-                
-                debug('info', 'fetchTranscript',  transcripts);
+    var youtubeGetVideoTranscripts = function (options) {
+        return new Promise((resolve, reject) => {
+            YoutubeTranscript.fetchTranscript(options.videoId)
+                .then((transcripts) => {
+                    let video = {videoId:options.videoId, hasTranscripts:false, transcriptCount: 0};
+                    upsertVideo({video:video, upsert:false}).then(
+                        (upsertResult) => {
+                            debug('info', 'youtubeGetVideoTranscripts',  {message:"Updated Video", video:upsertResult});
+                            deleteVideoTranscripts({videoId:options.videoId}).then((deleteResults) => {
+                                debug('info', 'deleted Existing Transcripts', deleteResults);
+                                transcripts.forEach((transcript, index) => {
+                                    let nearText = "";
+                                    if(index > 0){
+                                        nearText = transcripts[index-1].text + " ";
+                                    }
+                                    nearText = nearText + transcript.text;
+                                    if(index < transcripts.length - 1){ 
+                                        nearText = nearText + " " + transcripts[index+1].text;
+                                    }
+                                    transcript.index = index;
+                                    transcript.videoId = options.videoId;
+                                    transcript.createdOn = new Date();
+                                    transcript.nearText = nearText;
+                                });
+                                insertVideoTranscripts({transcripts:transcripts}).then((insertResults) => {
+                                    let insertCount = 0;
+                                    if(insertResults){
+                                        insertCount = insertResults.insertedCount
+                                    }
+                                    debug('info', 'inserted Transcripts', insertCount );
+                                    video.hasTranscripts = true;
+                                    video.transcriptCount = insertCount;
+                                    upsertVideo({video:video, upsert:false}).then(
+                                        (upsertResult) => {
+                                            resolve({message:"Inserted Transcripts", videoId:video.videoId, success:true, count:insertCount});        
+                                        });
+                                    
+                                });
+                            });
+                        }
+                    );
+                    
+                    
             })
             .catch((err) => {
-
-                debug('error', 'fetchTranscript',  {msg:err.message, stack:err.stack});
+                debug('error', 'youtubeGetVideoTransctipts',  {message:err.message, stack:err.stack});
+                reject(err);
+            });
+        })
+    }
+    var loadVideoTranscripts = function (options) {
+        return new Promise((resolve, reject) => {
+            youtubeGetVideoTranscripts(options)
+            .then((result) => {
+                debug('info', 'loadVideoTranscripts',  {message:result});
+                resolve(result);
+            })
+            .catch((err) => {
+                debug('error', 'youtubeGetVideoTransctipts',  {message:err.message, stack:err.stack});
+                reject(err);
+            });
+        })
+       
+    }
+    var test = function (options) {
+        return new Promise((resolve, reject) => {
+            LoadMissingTranscripts(options)
+                .then((result) => {
+                    debug('info', 'test',  {msg:result});
+                    resolve(result);
+                })
+                .catch((err) => {
+                    debug('error', 'test',  {msg:err.msg, stack:err.stack});
+                    reject({msg:err.msg, stack:err.stack});
+                });
+            })
+            .catch((err) => {
+                debug('error', 'test',  {msg:err.msg, stack:err.stack});
             });
     }
 
@@ -313,25 +394,33 @@ var ApiRequestHandler = function (options) {
         //https://developers.google.com/youtube/v3/docs/search/list
 
         //https://youtube.googleapis.com/youtube/v3/search?part=snippet&channelId=[ChannelID]&type=video&key=[YOUR_API_KEY]
+        return new Promise((resolve, reject) => {
 
-        findLastPublishedVideo(options).then((lastPublishedVideo) => {
-            if(lastPublishedVideo && lastPublishedVideo.publishedAt){
-                options.publishedAfter = lastPublishedVideo.publishedAt;
-            }
-            youtubeSearchVideos(options).then((videos) => {
-                videos.forEach((video) => {
-                    upsertVideo({video:video}).then(
-                        (upsertedVideo) => {
-                            debug('info', 'LoadChannel',  {msg:"Upserted Video", video:upsertedVideo});
-                        }
-                    );
-                    
-                    
+            findLastPublishedVideo(options).then((lastPublishedVideo) => {
+                if(lastPublishedVideo && lastPublishedVideo.publishedAt){
+                    options.publishedAfter = lastPublishedVideo.publishedAt;
+                }
+                youtubeSearchVideos(options).then((videos) => {
+                    videos.forEach((video) => {
+                        video.hasTranscripts = false;
+                        video.transcriptCount = 0;
+                        upsertVideo({video:video}).then(
+                            (upsertedVideo) => {
+                                debug('info', 'LoadChannel',  {msg:"Upserted Video", video:upsertedVideo});
+                                loadVideoTranscripts({videoId:video.videoId}).then((transcriptResults) => {
+                                    debug('info', 'LoadChannel',  {msg:"Loaded Transcripts", videoId:video.videoId, success:true, count:transcriptResults.count});
+                                }).catch((ex) => {
+                                    debug('error', 'LoadChannel',  {msg:ex.msg, stack:ex.stack});
+                                });
+                            }
+                        );  
+                    });
+                    resolve(videos);
+                }).catch((ex) => {
+                    debug('error', 'LoadChannel',  {msg:ex.msg, stack:ex.stack});
                 });
-            }).catch((ex) => {
-                debug('error', 'LoadChannel',  {msg:ex.message, stack:ex.stack});
-            });
 
+            })
         })
 
         
@@ -358,11 +447,38 @@ var ApiRequestHandler = function (options) {
         return findVideo(findOptions);
     }
         
-    var searchTranscripts = function (req, res) {
-        let options = {
-            find: { status: "pending" }
+    var searchTranscripts = function (options) {
+        return new Promise((resolve, reject) => { 
+        let searchOptions = {
+            find: { $text: {$search: options.search }}
         };
-        findTranscripts(req, res, options);
+        findTranscripts(searchOptions).then((transcripts) => {
+            let videoResults = {};
+            let videoIds = [];
+            let videoId = "";
+            transcripts.forEach((transcript) => {
+                if(videoResults[transcript.videoId] === undefined){
+                    videoResults[transcript.videoId] = {
+                        videoId: transcript.videoId,
+                        transcripts: []
+                    };
+                }
+                videoResults[transcript.videoId].transcripts.push(transcript);
+                if(videoId !== transcript.videoId){
+                    videoId = transcript.videoId;
+                    videoIds.push(videoId);
+                }
+            });
+            findVideos( {find: {videoId: {$in: videoIds}}}).then((videos) => {
+                videos.forEach((video) => {
+                        videoResults[video.videoId].video = video;
+                });
+                resolve(videoResults);
+            });
+        });
+        }).catch ((ex) => {
+            debug('error', 'searchTranscripts',  {msg:ex.message, stack:ex.stack});
+        });
     }
 
     var upsertVideo = function(options){
@@ -376,7 +492,11 @@ var ApiRequestHandler = function (options) {
                         const collection = db.collection('youtubeVideos');
                         if (collection) {
                             let query = { videoId: options.video.videoId };
-                            collection.updateOne(query, {$set: options.video }, { upsert: true }).then(                            
+                            let updateOptions = { upsert: true };
+                            if(options.upsert === false){
+                                updateOptions.upsert = false ;
+                            }
+                            collection.updateOne(query, {$set: options.video }, updateOptions).then(                            
                                 function (result) {
                                     client.close();
                                     resolve(result);
@@ -390,12 +510,12 @@ var ApiRequestHandler = function (options) {
                         } else {
                             debug("error", "upsertVideo", { "msg": "Not Able to Open MongoDB Connection", "stack": "" });
                             client.close();
-                            reject({ "code": 500, "msg": "Not Able to Open MongoDB Connection", "error": "collection is null"});
+                            reject({ "msg": "Not Able to Open MongoDB Connection", "error": "collection is null"});
                         }
                     } catch (ex) {
                         debug("error", "upsertVideo", { "msg": ex.message, "stack": ex.stack });
                         client.close();
-                        reject({ "code": 500, "msg": ex.message, "error": ex });
+                        reject({ "msg": ex.message, "error": ex });
                     }
                 },
                 function(err){
@@ -407,6 +527,29 @@ var ApiRequestHandler = function (options) {
             .catch ((ex) => {
                 debug('error', 'upsertVideo',  { "msg": ex.message, "stack": ex.stack });
             });
+    }
+
+
+    var LoadMissingTranscripts = function(options){
+        return new Promise((resolve, reject) => {
+            let findOptions = {
+                find: { hasTranscripts: false }
+            };
+            findVideos(findOptions).then((videos) => {
+                videos.forEach((video) => {
+                    loadVideoTranscripts({videoId:video.videoId}).then((transcriptResults) => {
+                        debug('info', 'LoadChannel',  {msg:"Loaded Transcripts", videoId:video.videoId, success:true, count:transcriptResults.count});
+                    }).catch((ex) => {
+                        debug('error', 'LoadChannel',  {msg:ex.msg, stack:ex.stack});
+                    });
+                });
+                resolve(videos);
+            });
+        })
+    }
+
+    var searchVideos = function (options) {
+        return findVideos(options);
     }
 
     var findVideo = function (options) {
@@ -422,7 +565,7 @@ var ApiRequestHandler = function (options) {
                         const collection = db.collection('youtubeVideos');
                         let findQuery = extend({}, options.find, findDefaults);
                         let sort = extend({}, options.sort);
-                        var projections = { videoId: 1, etag: 1, publishTime: 1, title:1, publishedAt: 1, channelId: 1, description: 1, thumbnails: 1, channelTitle: 1};
+                        var projections = { videoId: 1, etag: 1, publishTime: 1, title:1, publishedAt: 1, channelId: 1, description: 1, thumbnails: 1, channelTitle: 1, hasTranscripts: 1, transcriptCount: 1};
                         if (collection) {
                             collection.findOne(findQuery, { sort: sort, projection: projections }).then(
                                 function (doc) {
@@ -455,9 +598,9 @@ var ApiRequestHandler = function (options) {
         })
     };
 
-    var findVideos = function (req, res, options) {
-        try {
-            let findDefaults = { }
+    var findVideos = function (options) {
+        return new Promise((resolve, reject) => {
+            
             const client = new MongoClient(self.options.mongoDbServerUrl,self.options.mongoClientOptions);
             // Use connect method to connect to the Server
             client.connect().then(
@@ -465,43 +608,53 @@ var ApiRequestHandler = function (options) {
                     try {
                         const db = client.db(self.options.mongoDbDatabaseName);
                         const collection = db.collection('youtubeVideos');
+                        let findDefaults = {}
+                        let sortDefaults = { publishTime: -1 };
+                        let projectionDefaults = { videoId: 1, etag: 1, publishTime: 1, title:1, publishedAt: 1, channelId: 1, description: 1, thumbnails: 1, channelTitle: 1, hasTranscripts: 1, transcriptCount:1};
                         var findQuery = extend({}, options.find, findDefaults);
-                        var projections = { videoId: 1, etag: 1, publishTime: 1, title:1, publishedAt: 1, channelId: 1, description: 1, thumbnails: 1, channelTitle: 1};
+                        var sort = extend({}, options.sort, sortDefaults);
+                        var projections = extend({}, options.projections, projectionDefaults);
                         if (collection) {
-                            collection.find(findQuery, { projection: projections }).then(
+                            collection.find(findQuery)
+                            .project(projections)
+                            .sort(sort)
+                            .toArray()
+                            .then(
                                 function (docs) {
-                                    res.json(docs);
                                     client.close();
+                                    resolve(docs);
                                 },
                                 function(err){
                                     debug("error", "findVideos", { "msg": err.message, "stack": err.stack });
-                                    res.status(500).json({ "msg": "An Error Occured!", "error": err });
+                                    reject({ "msg": "An Error Occured!", "error": err });
                                     client.close();            
                                 }
                             );
                         } else {
-                            return null;
+                            debug("error", "findVideos", { "msg": "Colection Not Found", "stack": ""});
+                            reject({ "msg": "Colection Not Found", "stack": ""});;
                         }
                     } catch (ex) {
                         debug("error", "findVideos", { "msg": ex.message, "stack": ex.stack });
-                        res.status(500).json({ "msg": "An Error Occured!", "error": ex });
+                        reject({ "msg": "An Error Occured!", "error": ex });
                         client.close();
                     }
                 },
                 function(err){
                     debug("error", "findVideos", { "msg": err.message, "stack": err.stack });
-                    res.status(500).json({ "msg": "An Error Occured!", "error": err });        
+                    reject({ "msg": "An Error Occured!", "error": err });        
                 }
             );
-        } catch (ex) {
+        }).catch((ex) => {
             debug("error", "findVideos", { "msg": ex.message, "stack": ex.stack });
-            res.status(500).json({ "msg": "An Error Occured!", "error": ex });
-        }
+        });
     };
 
-    var findTranscripts = function (req, res, options) {
-        try {
-            let findDefaults = { deleted: false }
+    var findTranscripts = function (options) {
+        return new Promise((resolve, reject) => {
+            let findDefaults = {}
+            let sortDefaults = { videoId: 1, index: 1 };
+            let projectionDefaults = { videoId: 1, index: 1, text: 1, start: 1, duration: 1, offset: 1, nearText: 1, offsetSeconds: {$floor: {$divide: ["$offset", 1000] } } };
             const client = new MongoClient(self.options.mongoDbServerUrl,self.options.mongoClientOptions);
             // Use connect method to connect to the Server
             client.connect().then(
@@ -510,16 +663,21 @@ var ApiRequestHandler = function (options) {
                         const db = client.db(self.options.mongoDbDatabaseName);
                         const collection = db.collection('youtubeTranscripts');
                         var findQuery = extend({}, options.find, findDefaults);
-                        var projections = { routeGuid: 1, routeUserGuid: 1, status: 1, isTestData:1, startLocation: 1, destinationLocation: 1, createdOn: 1, earliestDeparture: 1,  shipments: 1 };
+                        var sort = extend({}, options.sort, sortDefaults);
+                        var projections = extend({}, options.projections, projectionDefaults);
                         if (collection) {
-                            collection.findOne(findQuery, { projection: projections }).then(
+                            collection.find(findQuery)
+                            .project(projections)
+                            .sort(sort)
+                            .toArray()
+                            .then(
                                 function (docs) {
-                                    res.json(docs);
                                     client.close();
+                                    resolve(docs);
                                 },
                                 function(err){
                                     debug("error", "findTranscripts", { "msg": err.message, "stack": err.stack });
-                                    res.status(500).json({ "msg": "An Error Occured!", "error": err });
+                                    reject({ "msg": "An Error Occured!", "error": err });
                                     client.close();            
                                 }
                             );
@@ -528,22 +686,70 @@ var ApiRequestHandler = function (options) {
                         }
                     } catch (ex) {
                         debug("error", "findTranscripts", { "msg": ex.message, "stack": ex.stack });
-                        res.status(500).json({ "msg": "An Error Occured!", "error": ex });
+                        reject({ "msg": "An Error Occured!", "error": ex });
                         client.close();
                     }
                 },
                 function(err){
                     debug("error", "findTranscripts", { "msg": err.message, "stack": err.stack });
-                    res.status(500).json({ "msg": "An Error Occured!", "error": err });        
+                    reject({ "msg": "An Error Occured!", "error": err });        
                 }
             );
-        } catch (ex) {
+        }). catch ((ex) => {
             debug("error", "findTranscripts", { "msg": ex.message, "stack": ex.stack });
-            res.status(500).json({ "msg": "An Error Occured!", "error": ex });
-        }
+            
+        });
     };
+
+    var deleteVideoTranscripts = function (options) {
+        return new Promise((resolve, reject) => {
+            let findDefaults = { videoId: options.videoId }
+            const client = new MongoClient(self.options.mongoDbServerUrl,self.options.mongoClientOptions);
+            // Use connect method to connect to the Server
+            client.connect().then(
+                function (client) {
+                    try {
+                        const db = client.db(self.options.mongoDbDatabaseName);
+                        const collection = db.collection('youtubeTranscripts');
+                        var findQuery = extend({}, options.find, findDefaults);
+                        if (collection) {
+                            collection.deleteMany(findQuery).then(
+                                function (results) {
+                                    client.close();
+                                    resolve(results);
+                                },
+                                function(err){
+                                    debug("error", "findTranscripts", { "msg": err.message, "stack": err.stack });
+                                    reject({ "msg": "An Error Occured!", "error": err });
+                                    client.close();            
+                                }
+                            );
+                        } else {
+                            return null;
+                        }
+                    } catch (ex) {
+                        debug("error", "findTranscripts", { "msg": ex.message, "stack": ex.stack });
+                        reject({ "msg": "An Error Occured!", "error": ex });
+                        client.close();
+                    }
+                },
+                function(err){
+                    debug("error", "findTranscripts", { "msg": err.message, "stack": err.stack });
+                    reject({ "msg": "An Error Occured!", "error": err });        
+                }
+            );
+        }). catch ((ex) => {
+            debug("error", "findTranscripts", { "msg": ex.message, "stack": ex.stack });
+            
+        })
+    };
+
+
     self.bindRoutes = BindRoutes;
     self.loadChannel = LoadChannel;
+    self.searchTranscripts = searchTranscripts;
+    self.searchVideos = searchVideos;
     self.test = test;
+    self.loadVideoTranscripts = loadVideoTranscripts;
 };
 module.exports = ApiRequestHandler;

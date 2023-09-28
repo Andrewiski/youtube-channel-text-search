@@ -4,21 +4,18 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width">
-    <title>Youtube Search</title>
-
-    <!--<link href="stylesheets/bootstrap.min.css" rel="stylesheet" />
-    <link href="stylesheets/bootstrap-theme.min.css" rel="stylesheet" />-->
+    <title>YouTube Transcripts Search</title>
     <link href="/javascript/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
-    <!--<link href="/javascript/bootstrap/css/bootstrap-theme.min.css" rel="stylesheet" />-->
-    <link href="/javascript/fontawesome/css/all.min.css" rel="stylesheet" />
-        <link href="/stylesheets/style.css" rel="stylesheet" />
+    <link href="/javascript/fontawesome/css/all.min.css" rel="stylesheet" />   
     <!--Served up by the socket.io service directly as part of the IO service process-->
     <script src="/socket.io/socket.io.js"></script>
     <script src="/javascript/bootstrap/js/bootstrap.min.js"></script>
     <script src="/javascript/fontawesome/js/all.min.js"></script>
     <script src="/javascript/dayjs/dayjs.min.js"></script>
     <script src="/javascript/js-cookie/js.cookie.min.js"></script>
+    <script src="/javascript/mustache/mustache.min.js"></script>
     <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
+    
    
     
     <script>
@@ -50,8 +47,17 @@
         }
 
         var commonData = {
-            socket: null
+            socket: null,
+            pendingLoadTransactions: {}
+
         };
+
+        var htmlToElement = function (html) {
+            var template = document.createElement('template');
+            html = html.trim(); // Never return a text node of whitespace as the result
+            template.innerHTML = html;
+            return template.content.firstChild;
+        }
 
         document.addEventListener('DOMContentLoaded', function () {
 
@@ -66,6 +72,90 @@
                 commonData.socket.emit("test", {videoId: videoId});    
             });
 
+            document.querySelector(".btnTranscriptsSearch").addEventListener("click", (evt) => {
+                var search = document.querySelector(".transcripts-search").value;
+                commonData.socket.emit("searchTranscripts", {search: search});    
+            });
+            commonData.socket.on("searchTranscriptsResults", function(searchResults){
+                var searchTranscriptsResults = document.querySelector(".searchTranscriptsResults");
+                searchTranscriptsResults.innerHTML = "";
+                var templateHtml = document.querySelector(".templates .searchResultsTemplate .searchResultTemplate").innerHTML;
+                for (const key in searchResults) {
+                    let video = searchResults[key];
+                    var rendered = Mustache.render(templateHtml, video);
+                    searchTranscriptsResults.appendChild(htmlToElement(rendered)) 
+                }
+            });
+
+            document.querySelector(".btnVideosSearch").addEventListener("click", (evt) => {
+                let find = {};
+                if(document.querySelector("#SearchVideosDateRangeBetween").checked){
+                    find.publishedAt = {};
+                    find.publishedAt.$gte = document.querySelector(".videosPanel .SearchVideosDateRangeStart").value;
+                    find.publishedAt.$lte = document.querySelector(".videosPanel .SearchVideosDateRangeEnd").value;
+                }
+                if(document.querySelector("#SearchVideosHasTranscriptsFalse").checked){
+                    find.hasTranscripts =  false;
+                }
+                if(document.querySelector("#SearchVideosHasTranscriptsTrue").checked){
+                    find.hasTranscripts =  true;
+                }
+                commonData.socket.emit("searchVideos", {find: find});    
+            });
+            var loadButtonClick = function(evt){
+                let videoId = evt.currentTarget.getAttribute("data-videoid");
+                commonData.socket.emit("loadVideoTranscripts", {videoId: videoId});
+                commonData.pendingLoadTransactions[videoId] = { button: evt.currentTarget, pending:true};
+                evt.currentTarget.disabled = true;
+                evt.currentTarget.querySelector(".spinner-border").classList.remove("visually-hidden");
+                let statusMessage = evt.currentTarget.parentElement.querySelector(".statusMessage");
+                if(statusMessage){
+                    statusMessage.classList.add("visually-hidden");
+                }
+            }
+            commonData.socket.on("searchVideosResults", function(searchResults){
+                var searchVideosResults = document.querySelector(".searchVideosResults");
+                searchVideosResults.innerHTML = "";
+                var templateHtml = document.querySelector(".templates .searchVideosResultsTemplate .searchVideosResultTemplate").innerHTML;
+                for (const key in searchResults) {
+                    let video = searchResults[key];
+                    var rendered = Mustache.render(templateHtml, video);
+                    let newElement = htmlToElement(rendered);
+                    searchVideosResults.appendChild(newElement) 
+                    let button = newElement.querySelector(".btnLoadTranscripts");
+                    if(button){
+                        button.addEventListener("click", loadButtonClick);
+                    }
+                    
+                }
+            });
+
+            commonData.socket.on("loadVideoTranscriptsResults", function(loadVideoTranscriptsResults){
+                var videoId = loadVideoTranscriptsResults.videoId;
+                var loadTransaction = commonData.pendingLoadTransactions[videoId];
+                if(loadTransaction){
+                    loadTransaction.pending = false;
+                    loadTransaction.button.querySelector(".spinner-border").classList.add("visually-hidden");
+                    let statusMessage = loadTransaction.button.parentElement.querySelector(".statusMessage");
+                    if(loadVideoTranscriptsResults.success === true){
+                        loadTransaction.button.disabled = true;
+                        loadTransaction.button.removeEventListener("click", loadButtonClick);
+                        loadTransaction.button.innerHTML = "Done";
+                        loadTransaction.button.classList.remove("btn-primary");
+                        loadTransaction.button.classList.add("btn-success");
+                        statusMessage.innerHTML = loadVideoTranscriptsResults.message + " " + loadVideoTranscriptsResults.count + " Lines";
+                        statusMessage.classList.remove("visually-hidden");
+                    }else{
+                        loadTransaction.button.disabled = false;
+                        
+                        if(statusMessage){
+                            statusMessage.innerHTML = "error: " + loadVideoTranscriptsResults.message;
+                            statusMessage.classList.remove("visually-hidden");
+                        }
+                    }
+                }
+                
+            });
         }, false);
     </script>
 </head>
@@ -82,9 +172,18 @@
                     </div>
                     <div class="float-end">
                         <div class="collapse navbar-collapse" id="navbarTopMenu">
-                            <ul class="navbar-nav navbar-right me-auto mb-2 mb-lg-0 menuItems">  
+                            <ul class="navbar-nav navbar-right me-auto mb-2 mb-lg-0 menuItems" role="tablist">  
                                 <li class="nav-item menuItem">
-                                    <a class="nav-link" href="#">Search</a>
+                                    <button class="nav-link active menuSearch" id="search-tab" data-bs-toggle="tab" data-bs-target="#searchTab" type="button" role="tab" aria-controls="search" aria-selected="false" >Search</button>
+                                </li>
+                                <li class="nav-item menuItem">
+                                    <button class="nav-link menuSearch" id="videos-tab" data-bs-toggle="tab" data-bs-target="#videosTab" type="button" role="tab" aria-controls="search" aria-selected="false" >Videos</button>
+                                </li>
+                                <li class="nav-item menuItem">
+                                    <button class="nav-link menuLoad" id="load-tab" data-bs-toggle="tab" data-bs-target="#loadTab" type="button" role="tab" aria-controls="load" aria-selected="false"  >Load</button>
+                                </li>
+                                <li class="nav-item menuItem" >
+                                    <button class="nav-link menuTest" id="test-tab" data-bs-toggle="tab" data-bs-target="#testTab" type="button" role="tab" aria-controls="test" aria-selected="false" >Test</button>
                                 </li>
                             </ul>
                         </div>
@@ -100,35 +199,113 @@
             <div class="row">
                 <div class="pageContent">
 
-                    <div class="card">
-                        <div class="card-header">Fetch Latest Videos</div>
-                        <div class="card-body">
-                            <div class="loadPanel">
-                            <div class="input-group">
-                                <span class="input-group-text"></i>Youtube Channel Id</span>
-                                <input class="form-control youtube-channelid" type="text" aria-label="YouTube ChannelId" aria-describedby="inputGroup-sizing-sm" placeholder="YouTube ChannelId" value="UCXMBuPm5AakJO-g6n_Ra4wA" />
+                    <div class="tab-content">
+                        <div class="tab-pane active" id="searchTab" role="tabpanel" aria-labelledby="search-tab">
+                            <div class="card">
+                                <div class="card-header">Search Transcripts</div>
+                                <div class="card-body">
+                                    <div class="searchPanel">
+                                        <div class="input-group">
+                                            <span class="input-group-text"></i>Search</span>
+                                            <input class="form-control transcripts-search" id="transcriptsSearch" type="text" aria-label="YouTube VideoId" aria-describedby="inputGroup-sizing-sm" placeholder="YouTube VideoId" value='"box of rocks"' />
+                                        </div>
+                                        <div>
+                                            <span class="small">To search for phrases use qoutes "box of rocks"!</span>
+                                        </div>
+                                        <div class="input-group">
+                                            <button class="btn btn-secondary btn-sm btnTranscriptsSearch" title="Test">Search</button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <table class="table table-sm table-striped">
+                                            <thead><td></td><td></td></thead>
+                                            <tbody class="searchTranscriptsResults">
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="input-group">
-                                <button class="btn btn-secondary btn-sm btnLoadTranscripts" title="Load New Transcripts">Load</button>
+                        </div>
+                        <div class="tab-pane" id="videosTab" role="tabpanel" aria-labelledby="video-tab">
+                            <div class="card">
+                                <div class="card-header">Videos</div>
+                                <div class="card-body">
+                                    <div class="videosPanel">
+                                        <div class="input-group input-group-sm">
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="SearchVideosDateRange" id="SearchVideosDateRangeAll" checked value="all">
+                                                <label class="form-check-label" for="SearchVideosDateRangeAll">All</label>
+                                            </div>
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="SearchVideosDateRange" id="SearchVideosDateRangeBetween" value="between">
+                                                <label class="form-check-label" for="SearchVideosDateRangeBetween">Between</label>
+                                            </div>
+                                            <span class="input-group-text" >Start</span>
+                                            <input class="form-control SearchVideosDateRangeStart" type="date"  aria-label="Start" aria-describedby="inputGroup-sizing-sm" placeholder="Start Date" />
+                                            <span class="input-group-text" >End</span>
+                                            <input class="form-control SearchVideosDateRangeEnd" type="date"  aria-label="End" aria-describedby="inputGroup-sizing-sm" placeholder="End Date" />
+                                        </div>
+                                        
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="SearchVideosHasTranscripts" id="SearchVideosHasTranscriptsAll" checked value="all">
+                                            <label class="form-check-label" for="SearchVideosHasTranscriptsAll">All</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="SearchVideosHasTranscripts" id="SearchVideosHasTranscriptsFalse" value="false">
+                                            <label class="form-check-label" for="SearchVideosHasTranscriptsFalse">Missing Transcripts</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="SearchVideosHasTranscripts" id="SearchVideosHasTranscriptsTrue" value="true">
+                                            <label class="form-check-label" for="SearchVideosHasTranscriptsTrue">Has Transcripts</label>
+                                        </div>
+                                        <div class="input-group">
+                                            <button class="btn btn-secondary btn-sm btnVideosSearch" title="Test">Search</button>
+                                        </div>
+                                        <div>
+                                            <table class="table table-sm table-striped">
+                                                <thead><td></td><td></td></thead>
+                                                <tbody class="searchVideosResults">
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
+                        </div>
+                        <div class="tab-pane" id="loadTab" role="tabpanel" aria-labelledby="load-tab">
+                            <div class="card">
+                                <div class="card-header">Process Latest Videos</div>
+                                <div class="card-body">
+                                    <div class="loadPanel">
+                                    <div class="input-group">
+                                        <span class="input-group-text"></i>Youtube Channel Id</span>
+                                        <input class="form-control youtube-channelid" id="youtubeChannelid" type="text" aria-label="YouTube ChannelId" aria-describedby="inputGroup-sizing-sm" placeholder="YouTube ChannelId" value="UCXMBuPm5AakJO-g6n_Ra4wA" />
+                                    </div>
+                                    <div class="input-group">
+                                        <button class="btn btn-secondary btn-sm btnLoadTranscripts" title="Load New Transcripts">Load</button>
+                                        
+                                    </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane" id="testTab" role="tabpanel" aria-labelledby="test-tab">
+                            <div class="card">
+                                <div class="card-header">Test</div>
+                                <div class="card-body">
+                                    <div class="testPanel">
+                                    <div class="input-group">
+                                        <span class="input-group-text"></i>VideoId</span>
+                                        <input class="form-control youtube-videoid" id="testYoutubeVideoid" type="text" aria-label="YouTube VideoId" aria-describedby="inputGroup-sizing-sm" placeholder="YouTube VideoId" value="MnZc7YaW4CI" />
+                                    </div>
+                                    <div class="input-group">
+                                        <button class="btn btn-secondary btn-sm btnTest" title="Test">Test</button>
+                                    </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="card">
-                        <div class="card-header">Test</div>
-                        <div class="card-body">
-                            <div class="loadPanel">
-                            <div class="input-group">
-                                <span class="input-group-text"></i>VideoId</span>
-                                <input class="form-control youtube-videoid" type="text" aria-label="YouTube VideoId" aria-describedby="inputGroup-sizing-sm" placeholder="YouTube VideoId" value="MnZc7YaW4CI" />
-                            </div>
-                            <div class="input-group">
-                                <button class="btn btn-secondary btn-sm btnTest" title="Test">Test</button>
-                            </div>
-                            </div>
-                        </div>
-                    </div>
-                    
                 </div>    
             </div>
         </div>
@@ -142,7 +319,87 @@
         </div>
     </footer>
     
+    <div style="display: none;" class="templates">
+      
+        <div class="searchResultsTemplate">
+            <table>
+                <tbody class="searchResultTemplate">
+                    <tr>
+                        <td>
+                            <div>
+                                <a href="https://www.youtube.com/watch?v={{videoId}}" target="youTube">
+                                    <img src="{{video.thumbnails.default.url}}" />
+                                </a>
+                            </div>
+                            <div><a href="https://www.youtube.com/watch?v={{videoId}}" target="_blank">new</a></div>
+                            <div>
+                                <span class="bold">{{{video.title}}}</span>
+                            </div>
+                            <div>
+                                <span class="small">{{video.channelTitle}}</span>
+                            </div>
+                            <div>
+                                <span class="small">{{video.publishedAt}}</span>
+                            </div>
+                            <div>
+                                <span class="small">{{video.description}}</span>
+                            </div>
+                        </td>
+                        <td height="200">
+                            <div class="overflow-auto">
+                                {{#transcripts}}
+                                <p><a href="https://www.youtube.com/watch?v={{videoId}}&t={{offsetSeconds}}" target="youTube">{{offsetSeconds}}</a> {{text}}</p>
+                                {{/transcripts}}
+                            </div>
+                        </td>
+                    </tr>         
+                </tbody>
+            </table>
+        </div>
 
+        <div class="searchVideosResultsTemplate">
+            <table>
+                <tbody class="searchVideosResultTemplate">
+                    <tr>
+                        <td>
+                            <div>
+                                <a href="https://www.youtube.com/watch?v={{videoId}}" target="youTube">
+                                    <img src="{{thumbnails.default.url}}" />
+                                </a>
+                            </div>
+                            <div><a href="https://www.youtube.com/watch?v={{videoId}}" target="_blank">new</a></div>
+                            <div>
+                                <span class="bold">{{{title}}}</span>
+                            </div>
+                            <div>
+                                <span class="small">{{channelTitle}}</span>
+                            </div>
+                            <div>
+                                <span class="small">{{publishedAt}}</span>
+                            </div>
+                            <div>
+                                <span class="small">{{description}}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div>
+                                {{^hasTranscripts}}
+                                    <button class="btn btn-primary btnLoadTranscripts" data-videoid="{{videoId}}">
+                                        <span class="spinner-border spinner-border-sm visually-hidden" role="status" aria-hidden="true"></span>
+                                        Load Transcripts
+                                    </button>
+                                    <div class="visually-hidden statusMessage"></div>
+                                {{/hasTranscripts}}
+                                {{#hasTranscripts}}
+                                    <div>Transcripts Line Count:{{transcriptCount}}</div>
+                                {{/hasTranscripts}}
+                            </div>
+                        </td>
+                    </tr>         
+                </tbody>
+            </table>
+        </div>
 
+    </div>
 </body>
 </html>

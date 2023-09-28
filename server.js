@@ -203,6 +203,7 @@ app.use('/javascript/popper', express.static(path.join(__dirname, 'node_modules'
 app.use('/javascript/bootstrap', express.static(path.join(__dirname, 'node_modules', 'bootstrap', 'dist')));
 app.use('/javascript/dayjs', express.static(path.join(__dirname, 'node_modules', 'dayjs')));
 app.use('/javascript/bootstrap-notify', express.static(path.join(__dirname, 'node_modules', 'bootstrap-notify')));
+app.use('/javascript/mustache', express.static(path.join(__dirname, 'node_modules', 'mustache')));
 app.use('/javascript/js-cookie', express.static(path.join(__dirname, 'node_modules', 'js-cookie', 'dist')));
 if(fs.existsSync(path.join(__dirname,configFolder, '/public/images', 'favicon.ico' ))){
     app.use(favicon(path.join(__dirname,configFolder, '/public/images', 'favicon.ico' )));
@@ -364,12 +365,10 @@ io.on('connection', function (socket) {
     socket.on("loadChannel", function (data) {
         try {
             logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'loadChannel', data);
-            apiRequestHandler.loadChannel(data, function (err, result) {
-                if (err) {
-                    logUtilHelper.log(appLogName, "browser", 'error', 'Error loadChannel', err);
-                } else {
-                    socket.emit('loadChannel', result);
-                }
+            apiRequestHandler.loadChannel(data).then((results) => {
+               
+                socket.emit('loadChannel', results);
+               
             });
         } catch (ex) {
             logUtilHelper.log(appLogName, "browser", 'error', 'Error socket on', ex);
@@ -378,12 +377,45 @@ io.on('connection', function (socket) {
     socket.on("test", function (data) {
         try {
             logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'test', data);
-            apiRequestHandler.test(data, function (err, result) {
-                if (err) {
-                    logUtilHelper.log(appLogName, "browser", 'error', 'Error test', err);
-                } else {
-                    socket.emit('test', result);
-                }
+            apiRequestHandler.test(data).then((results) => {
+                
+                socket.emit('test', results);
+                
+            });
+        } catch (ex) {
+            logUtilHelper.log(appLogName, "browser", 'error', 'Error socket on', ex);
+        }
+    });
+
+    socket.on("searchTranscripts", function (data) {
+        try {
+            logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'search', data);
+            apiRequestHandler.searchTranscripts(data).then((results) => {
+                socket.emit('searchTranscriptsResults', results);
+            });
+        } catch (ex) {
+            logUtilHelper.log(appLogName, "browser", 'error', 'Error socket on', ex);
+        }
+    });
+
+    socket.on("searchVideos", function (data) {
+        try {
+            logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'search', data);
+            apiRequestHandler.searchVideos(data).then((results) => {
+                socket.emit('searchVideosResults', results);
+            });
+        } catch (ex) {
+            logUtilHelper.log(appLogName, "browser", 'error', 'Error socket on', ex);
+        }
+    });
+
+    socket.on("loadVideoTranscripts", function (data) {
+        try {
+            logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'loadVideoTranscripts', data);
+            apiRequestHandler.loadVideoTranscripts(data).then((results) => {
+                socket.emit('loadVideoTranscriptsResults', results);
+            }).catch((err) => {
+                socket.emit('loadVideoTranscriptsResults', {message:err.message, stack:err.stack, videoId:data.videoId, success:false, count:0});
             });
         } catch (ex) {
             logUtilHelper.log(appLogName, "browser", 'error', 'Error socket on', ex);
