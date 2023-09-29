@@ -334,11 +334,11 @@ var ApiRequestHandler = function (options) {
             let filter = "";
             if(options.publishedAfter){
                 let publishedAfter = dayjs(options.publishedAfter);
-                filter = filter + "&publishedAfter=" + publishedAfter.format("YYYY-MM-DDTHH:mm:ssZ[Z]");
+                filter = filter + "&publishedAfter=" + publishedAfter.format("YYYY-MM-DDTHH:mm:ss[Z]");
             }
             if(options.publishedBefore){
                 let publishedBefore = dayjs(options.publishedBefore);
-                filter = filter + "&publishedBefore=" + publishedBefore.format("YYYY-MM-DDTHH:mm:ssZ[Z]");
+                filter = filter + "&publishedBefore=" + publishedBefore.format("YYYY-MM-DDTHH:mm:ss[Z]");
             }
              
             if(options.nextPageToken){
