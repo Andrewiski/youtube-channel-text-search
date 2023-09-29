@@ -321,9 +321,7 @@ var ApiRequestHandler = function (options) {
             }
             request.end(body);
         })
-        .catch ((ex) => {
-            debug('error', 'remoteDownloader',  {message:ex.message, stack:ex.stack});
-        });
+        
         
     };
 
@@ -346,13 +344,17 @@ var ApiRequestHandler = function (options) {
             if(options.nextPageToken){
                 filter = filter + "&pageToken=" + options.nextPageToken;
             }
+            var cleanUrl = "https://youtube.googleapis.com/youtube/v3/search?part=snippet&channelId=" + options.channelId + filter +  "&maxResults=50&order=date&eventType=completed&type=video&key="
             let httpOptions = {
-                url: "https://youtube.googleapis.com/youtube/v3/search?part=snippet&channelId=" + options.channelId + filter +  "&maxResults=50&order=date&eventType=completed&type=video&key=" + self.options.googleApiKey,
+                url: cleanUrl + self.options.googleApiKey,
                 headers : {'Content-Type': 'application/json' }
             }
             let channelVideos = [];
             remoteDownloader(httpOptions).then((results) => {
-                if(results.items){
+                if(!results){
+                    reject("remoteDownloader results is undefined");
+                }
+                if(results && results.items){
                     results.items.forEach((item,index) => {
                         let video = extend({}, item.snippet);
                         video.kind = item.id.kind;
@@ -361,7 +363,7 @@ var ApiRequestHandler = function (options) {
                         channelVideos.push(video);
                     });
                 }
-                if(results.nextPageToken){
+                if(results && results.nextPageToken){
                     options.nextPageToken = results.nextPageToken;
                     youtubeSearchVideos(options).then((videos) => {
                         channelVideos = channelVideos.concat(videos);
@@ -371,12 +373,10 @@ var ApiRequestHandler = function (options) {
                     resolve(channelVideos);
                 }
             }).catch((ex) => {
-                debug('error', 'youtubeSearchVideos',  {message:ex.message, stack:ex.stack});
+                debug('error', 'youtubeSearchVideos', "remoteDownloader", cleanUrl,  {message:ex.message, stack:ex.stack});
             });
         })
-        .catch ((ex) => {
-            debug('error', 'youtubeSearchVideos',  {message:ex.message, stack:ex.stack});
-        });
+        
     }
 
     var youtubeGetVideoTranscripts = function (options) {
@@ -454,10 +454,7 @@ var ApiRequestHandler = function (options) {
                     debug('error', 'test',  {message:err.message, stack:err.stack});
                     reject({message:err.message, stack:err.stack});
                 });
-            })
-            .catch((err) => {
-                debug('error', 'test',  {message:err.message, stack:err.stack});
-            });
+        })
     }
 
     var upsertVideosThenPullTranscriptsSync = async function (videos) {
@@ -682,10 +679,7 @@ var ApiRequestHandler = function (options) {
                     reject({"message": "An Error Occured!", "error": err });           
                 }
             )
-            })
-            .catch ((ex) => {
-                debug('error', 'upsertVideo',  {"message": ex.message, "stack": ex.stack });
-            });
+        })
     }
 
 
