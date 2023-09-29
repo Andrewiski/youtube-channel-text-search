@@ -1,6 +1,6 @@
 {
   "name": "youtube-channel-text-search",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Search a Youtube Channel Transcripts for specific text",
   "main": "server.js",
   "license": "none",

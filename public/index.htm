@@ -195,6 +195,7 @@
                 }
                 loadVideosProgessLogs.insertBefore(loadVideosProgessLog, loadVideosProgessLogs.firstChild);
                 let statusMessage = document.querySelector("#loadVideosStatusMessage");
+                const loadButton = document.querySelector("#btnLoadVideos");
                 if(eventData.count > 0){
                     message = message + " " + eventData.position + "/" + eventData.count + " Videos";
                 }
@@ -207,6 +208,10 @@
                     }else{
                         statusMessage.classList.add("alert-success");
                     }
+                    if(loadButton.disabled === false){
+                        loadButton.disabled = true;
+                        loadButton.querySelector(".spinner-border").classList.remove("visually-hidden");
+                    }
                 }else{
                     
                     statusMessage.innerHTML = message;
@@ -216,7 +221,7 @@
                     }else{
                         statusMessage.classList.add("alert-success");
                     }
-                    const loadButton = document.querySelector("#btnLoadVideos");
+                    
                     loadButton.disabled = false;
                     loadButton.querySelector(".spinner-border").classList.add("visually-hidden");
                     //statusMessage.innerHTML = "error: " + loadVideosProgress.message;
