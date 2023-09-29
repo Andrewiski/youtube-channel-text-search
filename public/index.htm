@@ -12,6 +12,7 @@
     <script src="/javascript/bootstrap/js/bootstrap.min.js"></script>
     <script src="/javascript/fontawesome/js/all.min.js"></script>
     <script src="/javascript/dayjs/dayjs.min.js"></script>
+    <script src="/javascript/dayjs/plugin/localizedFormat.js"></script>
     <script src="/javascript/js-cookie/js.cookie.min.js"></script>
     <script src="/javascript/mustache/mustache.min.js"></script>
     <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
@@ -60,11 +61,74 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
-
+            dayjs.extend(window.dayjs_plugin_localizedFormat);
             commonData.socket = io();
-            document.querySelector(".btnLoadTranscripts").addEventListener("click", (evt) => {
-                var channelId = document.querySelector(".youtube-channelid").value;
-                commonData.socket.emit("loadChannel", {channelId: channelId});    
+
+            document.querySelector("#btnLoadVideos").addEventListener("click", (evt) => {
+                try{
+                    let channelId = document.querySelector("#youtubeChannelId").value;
+                    let options = {
+                        channelId: channelId, 
+                        loadMode: "latest"
+                    }
+                    let statusMessage = document.querySelector("#loadVideosStatusMessage");
+                    if(!channelId){
+                        
+                        statusMessage.innerHTML = "ChannelId is required";
+                        statusMessage.classList.remove("visually-hidden");
+                        statusMessage.classList.add("alert-danger");
+                        return;
+                    }else{
+                        statusMessage.classList.add("visually-hidden");
+                        statusMessage.classList.remove("alert-danger");
+                    }
+
+                    if(document.querySelector("#LoadVideosDateBeforeOption").checked){
+                        options.loadMode = "before"
+                        options.beforeDate = document.querySelector("#LoadVideosDateBefore").value;
+                        if(!options.beforeDate){
+                            statusMessage.innerHTML = "Before Date is required";
+                            statusMessage.classList.remove("visually-hidden");
+                            statusMessage.classList.add("alert-danger");
+                            return;
+                        }
+                    }else if(document.querySelector("#LoadVideosDateAfterOption").checked){
+                        options.loadMode = "after"
+                        options.afterDate = document.querySelector("#LoadVideosDateAfter").value;
+                        if(!options.afterDate){
+                            statusMessage.innerHTML = "After Date is required";
+                            statusMessage.classList.remove("visually-hidden");
+                            statusMessage.classList.add("alert-danger");
+                            return;
+                        }
+                    }else if(document.querySelector("#LoadVideosDateBetweenOption").checked){
+                        options.loadMode = "between"
+                        options.betweenDateStart = document.querySelector("#LoadVideosDateBetweenStart").value;
+                        options.betweenDateEnd = document.querySelector("#LoadVideosDateBetweenEnd").value;
+                        if(!options.betweenDateStart || !options.betweenDateEnd){
+                            statusMessage.innerHTML = "Both Between Date Start and End are required";
+                            statusMessage.classList.remove("visually-hidden");
+                            statusMessage.classList.add("alert-danger");
+                            return;
+                        }
+                    }else {
+                        // assume Latestif(document.querySelector("#LoadVideosDateLatestOption").checked){
+                        options.loadMode = "latest"
+                    }
+                    
+                    commonData.socket.emit("loadVideos", options);  
+                    const loadButton = evt.currentTarget;
+                    loadButton.disabled = true;
+                    loadButton.querySelector(".spinner-border").classList.remove("visually-hidden");
+                    statusMessage.innerHTML = "Loading Videos ....";
+                    statusMessage.classList.remove("visually-hidden");
+                    statusMessage.classList.add("alert-success");
+                }catch(ex){
+                    statusMessage.innerHTML = "Error: " + ex.message;
+                    statusMessage.classList.remove("visually-hidden");
+                    statusMessage.classList.add("alert-danger");
+                    console.error(ex);
+                }
             });
 
             document.querySelector(".btnTest").addEventListener("click", (evt) => {
@@ -102,7 +166,7 @@
                 }
                 commonData.socket.emit("searchVideos", {find: find});    
             });
-            var loadButtonClick = function(evt){
+            var loadVideoTranscriptsButtonClick = function(evt){
                 let videoId = evt.currentTarget.getAttribute("data-videoid");
                 commonData.socket.emit("loadVideoTranscripts", {videoId: videoId});
                 commonData.pendingLoadTransactions[videoId] = { button: evt.currentTarget, pending:true};
@@ -113,6 +177,53 @@
                     statusMessage.classList.add("visually-hidden");
                 }
             }
+            const loadVideosProgessLogs = document.querySelector("#loadVideosProgessLog");
+            const loadVideosProgessLogTemplate = document.querySelector(".templates .loadVideoProgessTemplate .progessLog");
+            commonData.socket.on("loadVideosProgress",function(eventData){
+                //console.log("loadVideosProgress", eventData);
+                let message = eventData.message 
+                if(eventData.video){
+                    message = message + " " + eventData.video.title + " (" + eventData.video.videoId + ")" ;
+                }
+                let loadVideosProgessLog = document.importNode(loadVideosProgessLogTemplate, true);
+                loadVideosProgessLog.querySelector(".ts").textContent = dayjs().format('L') + ' ' + dayjs().format('LTS');
+                loadVideosProgessLog.querySelector(".position").textContent = eventData.position || "";
+                loadVideosProgessLog.querySelector(".count").textContent = eventData.count || "";
+                loadVideosProgessLog.querySelector(".message").textContent = message;
+                if(eventData.error){
+                    loadVideosProgessLog.classList.add("table-danger");
+                }
+                loadVideosProgessLogs.insertBefore(loadVideosProgessLog, loadVideosProgessLogs.firstChild);
+                let statusMessage = document.querySelector("#loadVideosStatusMessage");
+                if(eventData.count > 0){
+                    message = message + " " + eventData.position + "/" + eventData.count + " Videos";
+                }
+                if(eventData.completed === false){
+                    
+                    statusMessage.innerHTML = message;
+                    statusMessage.classList.remove("visually-hidden");
+                    if(loadVideosProgress.error){
+                        statusMessage.classList.add("alert-danger");
+                    }else{
+                        statusMessage.classList.add("alert-success");
+                    }
+                }else{
+                    
+                    statusMessage.innerHTML = message;
+                    statusMessage.classList.remove("visually-hidden");
+                    if(eventData.error){
+                        statusMessage.classList.add("alert-danger");
+                    }else{
+                        statusMessage.classList.add("alert-success");
+                    }
+                    const loadButton = document.querySelector("#btnLoadVideos");
+                    loadButton.disabled = false;
+                    loadButton.querySelector(".spinner-border").classList.add("visually-hidden");
+                    //statusMessage.innerHTML = "error: " + loadVideosProgress.message;
+                    //statusMessage.classList.add("visually-hidden");
+                    //statusMessage.classList.add("alert-danger");
+                }
+            });
             commonData.socket.on("searchVideosResults", function(searchResults){
                 var searchVideosResults = document.querySelector(".searchVideosResults");
                 searchVideosResults.innerHTML = "";
@@ -124,7 +235,7 @@
                     searchVideosResults.appendChild(newElement) 
                     let button = newElement.querySelector(".btnLoadTranscripts");
                     if(button){
-                        button.addEventListener("click", loadButtonClick);
+                        button.addEventListener("click", loadVideoTranscriptsButtonClick);
                     }
                     
                 }
@@ -139,7 +250,7 @@
                     let statusMessage = loadTransaction.button.parentElement.querySelector(".statusMessage");
                     if(loadVideoTranscriptsResults.success === true){
                         loadTransaction.button.disabled = true;
-                        loadTransaction.button.removeEventListener("click", loadButtonClick);
+                        loadTransaction.button.removeEventListener("click", loadVideoTranscriptsButtonClick);
                         loadTransaction.button.innerHTML = "Done";
                         loadTransaction.button.classList.remove("btn-primary");
                         loadTransaction.button.classList.add("btn-success");
@@ -147,7 +258,6 @@
                         statusMessage.classList.remove("visually-hidden");
                     }else{
                         loadTransaction.button.disabled = false;
-                        
                         if(statusMessage){
                             statusMessage.innerHTML = "error: " + loadVideoTranscriptsResults.message;
                             statusMessage.classList.remove("visually-hidden");
@@ -155,6 +265,140 @@
                     }
                 }
                 
+            });
+
+            var isObject = function (a) {
+                return (!!a) && (a.constructor === Object);
+            };
+
+            const serverLogRowTemplate = document.querySelector(".templates .serverLogsTemplate .logRow");
+            const serverLogsElement = document.querySelector("#serverLogs");
+            var addServerLog = function (log) {
+                try {
+                    
+                    let serverLogRow = document.importNode(serverLogRowTemplate, true); 
+                    serverLogRow.querySelector(".logTs").textContent = dayjs(log.timestamp).format('L') + ' ' + dayjs(log.timestamp).format('LTS');
+                    let logLevelClass = "info";
+                    switch (log.logLevel) {
+                        case 'error':
+                        case 'panic':
+                        case 'fatal':
+                            logLevelClass = 'danger';
+                            break;
+                        case 'warning':
+                            logLevelClass = 'warning';
+                            break;
+                        case 'trace':
+                        case 'verbose':
+                        case 'debug':
+                            logLevelClass = 'light';
+                            break;
+                    }
+                    serverLogRow.setAttribute('title',log.logLevel);
+                    serverLogRow.querySelector('.logApp').textContent = log.appName + ":" + log.appSubname;
+                    
+                    serverLogRow.classList.add('table-' + logLevelClass);
+                    let logMessage = '';
+                    if (log.args) {
+                        log.args.forEach((item, index) => {
+                            try {
+                                if (logMessage.length > 0) {
+                                    logMessage = logMessage + ', ';
+                                }
+                                if (isObject(log.args[index])) {
+                                    logMessage = logMessage + JSON.stringify(log.args[index]);
+                                } else {
+                                    if (log.args[index] === undefined) {
+                                        logMessage = logMessage + 'undefined';
+                                    } else if (log.args[index] === null) {
+                                        logMessage = logMessage + 'null';
+                                    }
+                                    else {
+                                        logMessage = logMessage + log.args[index].toString();
+                                    }
+                                }
+                            } catch (ex) {
+                                console.log('error', 'Error addServerLog args', ex);
+                            }
+                        });
+                    }
+                    serverLogRow.querySelector('.logMsg').innerHTML = logMessage;
+                    serverLogsElement.insertBefore(serverLogRow, serverLogsElement.firstChild);  
+                    if (serverLogsElement.childElementCount > 1000) {
+                        serverLogsElement.lastchild.remove();
+                    }
+                } catch (ex) {
+                    console.log('error', 'Error addServerLog', ex);
+                }
+            };
+
+
+            commonData.socket.on('serverLog', function (message) {
+                //console.log('serverLog', message);
+                
+                addServerLog(message);
+            });
+
+            commonData.socket.on('serverLogs', function (logMessages) {
+                //response message for issuing a packageUpdate
+                //console.log('serverLogs', message);
+                serverLogsElement.textContent = '';
+                logMessages.forEach((item, index) => {
+                    addServerLog(item);
+                });
+            });
+
+            document.querySelector("#serverLogSubscribe").addEventListener("change", (evt) => {
+                if(evt.currentTarget.checked){
+                    commonData.socket.emit("serverLogsSubscribe", {});
+                }else{
+                    commonData.socket.emit("serverLogsUnsubscribe", {});
+                }
+            });
+
+            let getVideoStats = function (){
+                return new Promise((resolve, reject) => {
+                    ajax("/api/videoStats").then((videoStats) => {
+                        commonData.videoStats = videoStats;
+                        resolve(videoStats);
+                    }).catch((error) => {
+                        console.log(error);
+                        reject(error);
+                    });
+                });
+            }
+
+            let navMenuButtonEventHandler = function (event) {
+                //event.target // newly activated tab
+                //event.relatedTarget // previous active tab
+                let tabId = event.target.getAttribute("data-bs-target");
+                // if(tabId !=== "#serverLogsTab"){
+                //     commonData.socket.emit("serverLogsUnsubscribe", {});
+                // }
+                switch (tabId) {
+                    case "#serverLogsTab":
+                        commonData.socket.emit("serverLogs", {});
+                        break;
+                    case "#loadTab":
+                        getVideoStats().then((videoStats) => {
+                            document.querySelector(".videoStats .videoCount").textContent = videoStats.videoCount;
+                            document.querySelector(".videoStats .latestVideoPublishedAt").textContent = dayjs(videoStats.latestVideoPublishedAt).format('L') + ' ' + dayjs(videoStats.latestVideoPublishedAt).format('LTS');
+                            document.querySelector(".videoStats .earliestVideoPublishedAt").textContent = dayjs(videoStats.earliestVideoPublishedAt).format('L') + ' ' + dayjs(videoStats.earliestVideoPublishedAt).format('LTS');
+                            document.querySelector("#LoadVideosDateAfter").value = dayjs(videoStats.latestVideoPublishedAt).format('YYYY-MM-DD');
+                            document.querySelector("#LoadVideosDateBefore").value = dayjs(videoStats.earliestVideoPublishedAt).format('YYYY-MM-DD');
+                            document.querySelector("#LoadVideosDateBetweenStart").value = dayjs(videoStats.earliestVideoPublishedAt).add(-2,'day').format('YYYY-MM-DD');
+                            document.querySelector("#LoadVideosDateBetweenEnd").value = dayjs(videoStats.earliestVideoPublishedAt).format('YYYY-MM-DD');
+                            
+                        }).catch((error) => {
+                            console.log(error);
+                        });
+                        break;
+                }
+            }
+
+            let navMenuButtons = document.querySelectorAll('.menuItems button[data-bs-toggle="tab"]');
+            navMenuButtons.forEach((tabEl, index) => {
+                tabEl.addEventListener('shown.bs.tab', navMenuButtonEventHandler)
             });
         }, false);
     </script>
@@ -183,7 +427,10 @@
                                     <button class="nav-link menuLoad" id="load-tab" data-bs-toggle="tab" data-bs-target="#loadTab" type="button" role="tab" aria-controls="load" aria-selected="false"  >Load</button>
                                 </li>
                                 <li class="nav-item menuItem" >
-                                    <button class="nav-link menuTest" id="test-tab" data-bs-toggle="tab" data-bs-target="#testTab" type="button" role="tab" aria-controls="test" aria-selected="false" >Test</button>
+                                    <button class="nav-link menuServerLogs" id="serverLogs-tab" data-bs-toggle="tab" data-bs-target="#serverLogsTab" type="button" role="tab" aria-controls="serverlogs" aria-selected="false" >Logs</button>
+                                </li>
+                                <li class="nav-item menuItem" >
+                                    <button class="nav-link menuDebug" id="debug-tab" data-bs-toggle="tab" data-bs-target="#debugTab" type="button" role="tab" aria-controls="debug" aria-selected="false" >Debug</button>
                                 </li>
                             </ul>
                         </div>
@@ -198,7 +445,7 @@
         <div class="container mainContent">
             <div class="row">
                 <div class="pageContent">
-
+                    
                     <div class="tab-content">
                         <div class="tab-pane active" id="searchTab" role="tabpanel" aria-labelledby="search-tab">
                             <div class="card">
@@ -274,26 +521,89 @@
                         </div>
                         <div class="tab-pane" id="loadTab" role="tabpanel" aria-labelledby="load-tab">
                             <div class="card">
-                                <div class="card-header">Process Latest Videos</div>
+                                <div class="card-header">Load Latest Videos</div>
                                 <div class="card-body">
                                     <div class="loadPanel">
-                                    <div class="input-group">
-                                        <span class="input-group-text"></i>Youtube Channel Id</span>
-                                        <input class="form-control youtube-channelid" id="youtubeChannelid" type="text" aria-label="YouTube ChannelId" aria-describedby="inputGroup-sizing-sm" placeholder="YouTube ChannelId" value="UCXMBuPm5AakJO-g6n_Ra4wA" />
-                                    </div>
-                                    <div class="input-group">
-                                        <button class="btn btn-secondary btn-sm btnLoadTranscripts" title="Load New Transcripts">Load</button>
+                                        <div class="videoStats">
+                                            <span> Video Count:</span><span class="videoCount"></span>  <span> Latest: </span><span class="latestVideoPublishedAt"></span> <span> Earliest: </span><span class="earliestVideoPublishedAt"></span>
+                                        </div>
+                                        <div class="input-group mb-3 d-flex">
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="LoadVideosDate" id="LoadVideosDateLatestOption" checked value="latest">
+                                                <label class="form-check-label" for="LoadVideosDateLatestOption">Latest</label>
+                                            </div>
+                                        </div>
+                                        <div class="input-group mb-3 d-flex">
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="LoadVideosDate" id="LoadVideosDateBeforeOption" value="before">
+                                                <label class="form-check-label" for="LoadVideosDateBeforeOption">Before</label>
+                                                
+                                            </div>
+                                            <input class="form-control" id="LoadVideosDateBefore" type="date"  aria-label="Start" aria-describedby="inputGroup-sizing-sm" placeholder="Before Date" />
+                                        </div>
+                                        <div class="input-group mb-3 d-inline-flex">
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="LoadVideosDate" id="LoadVideosDateAfterOption" value="after">
+                                                <label class="form-check-label" for="LoadVideosDateAfterOption">After</label>
+                                            </div>
+                                            <input class="form-control form-control-sm" id="LoadVideosDateAfter" type="date"  aria-label="Start" aria-describedby="inputGroup-sizing-sm" placeholder="After Date" />
+                                        </div>
+                                        <div class="input-group mb-3 d-inline-flex">
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="LoadVideosDate" id="LoadVideosDateBetweenOption" value="between">
+                                                <label class="form-check-label" for="LoadVideosDateBetweenOption">Between</label>
+                                            </div>
+                                            <input class="form-control form-control-sm" id="LoadVideosDateBetweenStart" type="date"  aria-label="Start" aria-describedby="inputGroup-sizing-sm" placeholder="Start Date" />
+                                            <span class="fs-5 px-2"><i class="fa-solid fa-minus"></i></span>
+                                            <input class="form-control form-control-sm" id="LoadVideosDateBetweenEnd" type="date"  aria-label="Endt" aria-describedby="inputGroup-sizing-sm" placeholder="End Date" />
+                                        </div> 
                                         
+                                        <div class="input-group mb-3 col-lg-3">
+                                            <span class="input-group-text"></i>Youtube Channel Id</span>
+                                            <input class="form-control youtube-channelid" id="youtubeChannelId" type="text" aria-label="YouTube ChannelId" aria-describedby="inputGroup-sizing-sm" placeholder="YouTube ChannelId" value="UCXMBuPm5AakJO-g6n_Ra4wA" />
+                                        </div>
+                                        <div class="mb-3">
+                                            <button class="btn btn-primary btn-sm" id="btnLoadVideos" title="Load New Videos"><span class="spinner-border spinner-border-sm visually-hidden" role="status" aria-hidden="true"></span><span class="px-2">Load Videos</span></button>
+                                            <div class="visually-hidden" id="loadVideosStatusMessage"></div>
+                                        </div>
                                     </div>
+                                    <div>
+                                        <table class="table table-sm table-striped">
+                                            <thead><td>Time</td><td>Position</td><td>Count</td><td>Message</td></thead>
+                                            <tbody id="loadVideosProgessLog">
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="tab-pane" id="testTab" role="tabpanel" aria-labelledby="test-tab">
+                        <div class="tab-pane" id="serverLogsTab" role="tabpanel" aria-labelledby="serverLogs-tab">
                             <div class="card">
-                                <div class="card-header">Test</div>
+                                <div class="card-header">Server Logs</div>
                                 <div class="card-body">
-                                    <div class="testPanel">
+                                    <div class="serverLogsPanel">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="serverLogSubscribe">
+                                            <label class="form-check-label" for="serverLogSubscribe">Live Logs</label>
+                                        </div>
+                                        <table class="table table-condensed">
+                                            <thead>
+                                                <tr><th>Timestamp</th><th>App</th><th>Message</th></tr>
+                                            </thead>
+                                            <tbody id="serverLogs" class="serverLogs">
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            
+                        </div>
+                        <div class="tab-pane" id="debugTab" role="tabpanel" aria-labelledby="debug-tab">
+                            <div class="card">
+                                <div class="card-header">Debug</div>
+                                <div class="card-body">
+                                    <div class="debugPanel">
                                     <div class="input-group">
                                         <span class="input-group-text"></i>VideoId</span>
                                         <input class="form-control youtube-videoid" id="testYoutubeVideoid" type="text" aria-label="YouTube VideoId" aria-describedby="inputGroup-sizing-sm" placeholder="YouTube VideoId" value="MnZc7YaW4CI" />
@@ -356,7 +666,19 @@
                 </tbody>
             </table>
         </div>
-
+        <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+            <div id="liveToast" class="toast hide" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true">
+                <div class="toast-header">
+                <img src="..." class="rounded me-2" alt="...">
+                <strong class="me-auto">Alert</strong>
+                <small>11 mins ago</small>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body">
+                This is a toast message.
+                </div>
+            </div>
+        </div>
         <div class="searchVideosResultsTemplate">
             <table>
                 <tbody class="searchVideosResultTemplate">
@@ -399,7 +721,21 @@
                 </tbody>
             </table>
         </div>
+        <div class="serverLogsTemplate">
 
+            <table>
+                <tr class="logRow"><td class="logTs"></td><td class="logApp"></td><td class="logMsg"></td></tr>
+            </table>
+
+        </div>
+
+        <div class="loadVideoProgessTemplate">
+
+            <table>
+                <tr class="progessLog"><td class="ts"></td><td class="position"></td><td class="count"></td><td class="message"></td></tr>
+            </table>
+
+        </div>
     </div>
 </body>
 </html>

@@ -30,6 +30,11 @@ if (process.env.localDebug === 'true') {
     configFileOptions.configDirectory = "config/localDebug";
     localDebug = true;
 }
+var consoleLog = function () {
+    if(localDebug === true){
+        console.log.apply(this, arguments);
+    }
+}
 
 var defaultConfig = {
     "configDirectory": configFileOptions.configDirectory,
@@ -40,8 +45,9 @@ var defaultConfig = {
     "httpport": 37080,
     "googleApiKey":"",
     "appLogLevels":{
-        "server": {
-            "app":"info"
+        "youtubesearch": {
+            "app":"info",
+            "browser":"info"
         },
         "apiRequestHandler":{"app":"info"}
     }
@@ -52,40 +58,40 @@ try{
     let envVarablesSet = false;
     let envHTTPPORT = process.env.HTTPPORT ;
     if (envHTTPPORT){
-        console.log ("environment HTTPPORT = " + envHTTPPORT )
+        consoleLog ("environment HTTPPORT = " + envHTTPPORT )
         defaultConfig.httpport = parseInt(envHTTPPORT);
         envVarablesSet = true;
     }
     let envCONFIGDIRECTORY = process.env.CONFIGDIRECTORY ;
     if (envCONFIGDIRECTORY){
-        console.log ("environment CONFIGDIRECTORY = " + envCONFIGDIRECTORY )
+        consoleLog ("environment CONFIGDIRECTORY = " + envCONFIGDIRECTORY )
         defaultConfig.configDirectory = envCONFIGDIRECTORY;
         envVarablesSet = true;
     }
     let envMONGODBSERVERURL = process.env.MONGODBSERVERURL ;
     if (envMONGODBSERVERURL){
-        console.log ("environment MONGODBSERVERURL = " + envMONGODBSERVERURL )
+        consoleLog ("environment MONGODBSERVERURL = " + envMONGODBSERVERURL )
         defaultConfig.mongoDbServerUrl = envMONGODBSERVERURL;
         envVarablesSet = true;
     }
     let envMONGODBDATABASENAME = process.env.MONGODBDATABASENAME ;
     if (envMONGODBDATABASENAME){
-        console.log ("environment MONGODBDATABASENAME = " + envMONGODBDATABASENAME )
+        consoleLog ("environment MONGODBDATABASENAME = " + envMONGODBDATABASENAME )
         defaultConfig.mongoDbDatabaseName = envMONGODBDATABASENAME;
         envVarablesSet = true;
     }
     let envGOOGLEAPIKEY = process.env.GOOGLEAPIKEY ;
     if (envGOOGLEAPIKEY){
-        console.log ("environment GOOGLEAPIKEY = " + envGOOGLEAPIKEY )
+        consoleLog ("environment GOOGLEAPIKEY = " + envGOOGLEAPIKEY )
         defaultConfig.googleApiKey = envGOOGLEAPIKEY;
         envVarablesSet = true;
     }
 
     if(envVarablesSet === true){
-        console.log("Environment Varables set this only effects the initial creation of the config file")
+        consoleLog("Environment Varables set this only effects the initial creation of the config file")
     }
 }catch(err){
-    console.log("error Reading Environment Variables" + err)
+    consoleLog("error Reading Environment Variables" + err)
 }
 
 var configHandler = new ConfigHandler(configFileOptions, defaultConfig);
@@ -94,26 +100,44 @@ var objOptions = configHandler.config;
 var configFolder = objOptions.configDirectory;
 
 
-
+var privateData = {
+    browserSockets: {}
+};
 
 
 var appLogHandler = function (logData) {
-    //add to the top of the log
-    privateData.logs.push(logData);
-    if (privateData.logs.length > objOptions.maxLogLength) {
-        privateData.logs.shift();
+    //send Log to subscribed browser sockets
+    try{
+        for (var socketId in privateData.browserSockets) {
+            try{
+                if(privateData.browserSockets[socketId].logsSubscribe === true){
+                    //var shouldLogAppLogLevels = function (appLogLevels, appName, appSubname, logLevelName) {
+                    //if(logUtilHelper.shouldLogAppLogLevels(privateData.browserSockets[socketId].logLevel, logData.appName, logData.appSubname, logData.level) === true){
+                    if(logUtilHelper.shouldLogAppLogLevels(privateData.browserSockets[socketId].logLevels, logData.appName, logData.appSubname, logData.level) === true){
+                        var socket = privateData.browserSockets[socketId].socket;
+                        socket.emit('serverLog', logData);
+                    }
+                }
+            }catch(ex){
+                consoleLog("Error sending log to browser socket", socketId , ex);
+            }
+        }
+    }catch(ex){
+        consoleLog("Error sending log to browser sockets", ex);
     }
 }
 
 let logUtilHelper = new LogUtilHelper({
     appLogLevels: objOptions.appLogLevels,
     logEventHandler: null,
-    logUnfilteredEventHandler: null,
+    logUnfilteredEventHandler: appLogHandler,
     logFolder: objOptions.logDirectory,
     logName: appLogName,
     debugUtilEnabled: (process.env.DEBUG ? true : undefined) || false,
     debugUtilName:appLogName,
     debugUtilUseAppName:true,
+    debugUtilUseUtilName:false,
+    debugUtilUseAppSubName:false,
     logToFile: !localDebug,
     logToFileLogLevel: objOptions.logLevel,
     logToMemoryObject: true,
@@ -124,11 +148,19 @@ let logUtilHelper = new LogUtilHelper({
 })
 
 
+var loadVideosEventHandler = function (eventData) {
+    if(io){
+        io.emit('loadVideosProgress', eventData)
+    }
+}
+
+
 var apiRequestHandler = new ApiRequestHandler({
     mongoDbServerUrl: objOptions.mongoDbServerUrl,
     mongoDbDatabaseName: objOptions.mongoDbDatabaseName,
     logUtilHelper:logUtilHelper,
-    googleApiKey:objOptions.googleApiKey
+    googleApiKey:objOptions.googleApiKey,
+    loadVideosEventHandler:loadVideosEventHandler
 });
 
 
@@ -145,10 +177,7 @@ var commonData = {
     }
 };
 
-var privateData = {
-    logs: [],
-    browserSockets: {}
-};
+
 
 
 
@@ -224,7 +253,7 @@ var handlePublicFileRequest = function (req, res) {
     if (filePath === "/") {
         filePath = "/index.htm";
     }
-    console.log('handlePublicFileRequest ' + filePath + ' ...');
+    //console.log('handlePublicFileRequest ' + filePath + ' ...');
 
     //var extname = path.extname(filePath);
     //var contentType = 'text/html';
@@ -341,8 +370,8 @@ io.on('connection', function (socket) {
     if (privateData.browserSockets[socket.id] === undefined) {
         privateData.browserSockets[socket.id] = {
             socket: socket,
-            logLevel: objOptions.logLevel
-
+            logLevels: JSON.parse(JSON.stringify(objOptions.logLevel)),
+            logsSubscribe: false
         };
     }
 
@@ -350,7 +379,29 @@ io.on('connection', function (socket) {
         logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'ping');
     });
 
-       
+    socket.on('serverLogsSubscribe', function (data) {
+        logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'serverLogsSubscribe');
+        privateData.browserSockets[socket.id].logsSubscribe= true;
+        
+    });
+    socket.on('serverLogsUnsubscribe', function (data) {
+        logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'serverLogsUnsubscribe');
+        privateData.browserSockets[socket.id].logsSubscribe= false;
+        
+    });
+    socket.on('serverLogs', function (data) {
+        logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'serverLogs');
+        socket.emit('serverLogs', logUtilHelper.memoryData.logs);
+    });
+    socket.on('serverLogLevels', function (data) {
+        logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'serverLogLevels', data);
+        if (data === undefined || data === null || data === "") {
+            socket.emit('serverLogLevels', privateData.browserSockets[socket.id].logLevels);
+        }else{
+            privateData.browserSockets[socket.id].logLevels = data;
+        }
+        
+    });
 
     socket.on("disconnect", function () {
         try {
@@ -362,13 +413,11 @@ io.on('connection', function (socket) {
             logUtilHelper.log(appLogName, "browser", 'error', 'Error socket on', ex);
         }
     });
-    socket.on("loadChannel", function (data) {
+    socket.on("loadVideos", function (data) {
         try {
             logUtilHelper.log(appLogName, "browser", 'trace',  socket.id, 'loadChannel', data);
-            apiRequestHandler.loadChannel(data).then((results) => {
-               
-                socket.emit('loadChannel', results);
-               
+            apiRequestHandler.loadVideos(data).then((results) => {
+                socket.emit('loadVideosResults', results);
             });
         } catch (ex) {
             logUtilHelper.log(appLogName, "browser", 'error', 'Error socket on', ex);
@@ -424,8 +473,7 @@ io.on('connection', function (socket) {
 
     //This is a new connection, so send info to commonData
     socket.emit('commonData', commonData);
-    //This is a new connection, so send them the logs
-    socket.emit('serverLogs', privateData.logs);
+    
     
 });
 
